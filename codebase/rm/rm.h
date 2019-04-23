@@ -11,6 +11,8 @@ using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
 
+#define MAX_TABLE_NAME_LENGTH 50;
+
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
 public:
