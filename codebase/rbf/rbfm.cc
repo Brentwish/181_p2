@@ -49,7 +49,7 @@ RC RecordBasedFileManager::createFile(const string &fileName) {
 }
 
 RC RecordBasedFileManager::destroyFile(const string &fileName) {
-	return _pf_manager->destroyFile(fileName);
+    return _pf_manager->destroyFile(fileName);
 }
 
 RC RecordBasedFileManager::openFile(const string &fileName, FileHandle &fileHandle) {
@@ -92,9 +92,19 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 
     SlotDirectoryHeader slotHeader = getSlotDirectoryHeader(pageData);
 
-    // Setting up the return RID.
+    // SINCE WE MOVED THE RECORDS NEED TO ENSURE THAT THERE'S NO EMPTY SLOTS
+    // FIND THE EMPTY SLOT
+    SlotDirectoryRecordEntry sEntry;
+    rid.slotNum = -1;
+    for (int j=0; j < slotHeader.recordEntriesNumber; j++) {
+        sEntry = getSlotDirectoryRecordEntry(pageData, j);
+        if (sEntry.length == 4097) { // deleted record
+            rid.slotNum = j;
+        }
+    }
+    if (rid.slotNum == -1) // no slot found in the middle
+        rid.slotNum = slotHeader.recordEntriesNumber;
     rid.pageNum = i;
-    rid.slotNum = slotHeader.recordEntriesNumber;
 
     // Adding the new record reference in the slot directory.
     SlotDirectoryRecordEntry newRecordEntry;
@@ -211,14 +221,39 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     return SUCCESS;
 }
 
-RC deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid) 
+RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid) 
 {
     // get the page
     void *page = malloc(PAGE_SIZE);
-    fileHandle.readPage(page, rid.pageNum);
+    fileHandle.readPage(rid.pageNum, page);
 
-    // get the slot header
-    SlotDirectoryHeader sHeader = getSlotDirectoryHeader(page);
+    // get the slot
+    SlotDirectoryRecordEntry sEntry = getSlotDirectoryRecordEntry(page, rid.slotNum);
+
+    // make sure that the slot is in this page
+    if (sEntry.length < 0) { // if the record has been moved 
+        RID temp;
+        temp.slotNum = sEntry.length * -1;
+        temp.pageNum = sEntry.offset;
+        // do the delete on the correct page
+        deleteRecord(fileHandle, recordDescriptor, temp);
+        // remove the slots too
+        sEntry.length = 4097;
+        setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry); // remove the slot's validity
+        free(page);
+        return SUCCESS;
+    }
+    else { // on this page, so just change header and compact
+        sEntry.length = 4097;
+        setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry);
+        compactPage(page);
+    }
+
+    // commit the changes to the disk
+    fileHandle.writePage(rid.pageNum, page);
+    free(page);
+    return SUCCESS;
+
 }
 
 RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid) 
@@ -327,6 +362,102 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
 
 }
 
+RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName, void *data) 
+{
+    // get the page first 
+    void *page = malloc(PAGE_SIZE);
+    fileHandle.readPage(rid.pageNum, page);
+
+    // get the slot header
+    SlotDirectoryHeader sHeader;
+    sHeader = getSlotDirectoryHeader(page);
+
+    // get the actual slot
+    SlotDirectoryRecordEntry sEntry;
+    sEntry = getSlotDirectoryRecordEntry(page, rid.slotNum);
+
+    // check if the record is still on this page 
+    if (sEntry.length < 0) {
+        RID temp;
+        temp.pageNum = sEntry.offset;
+        temp.slotNum = sEntry.length * -1;
+        // do the operation on the correct page
+        RC ret = readAttribute(fileHandle, recordDescriptor, temp, attributeName, data);
+
+        if (ret == 0 ) 
+            return SUCCESS;
+    }
+
+    // find the index of the attribute we are looking for 
+    int i;
+    while(recordDescriptor[i].name != attributeName){
+        i++;
+    }
+
+    insertAttrIntoData(page, sEntry, i, data);
+    free(page);
+    return SUCCESS;
+}
+
+void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordEntry sEntry, int attrIdx, void* data) 
+{
+    // get to the start of the offset in the page
+    void* recOffset = (char*) page + sEntry.offset;
+    int dataOffset = 0; // Offset for the data page
+
+    // insert the null pointer into the data first 
+    // calculate null header
+    // same as GetRecordAtOffset for most part
+    // Allocate space for null indicator.
+    // Get number of columns and size of the null indicator for this record
+    RecordLength len = 0;
+    memcpy (&len, recOffset, sizeof(RecordLength));
+
+    int recordNullIndicatorSize = getNullIndicatorSize(len);
+    char recordNullIndicator[recordNullIndicatorSize];
+
+    // Read in the existing null indicator
+    memcpy (recordNullIndicator, (char*) recOffset + sizeof(RecordLength), recordNullIndicatorSize);
+
+    // check if the field is null
+    if (fieldIsNull(recordNullIndicator, attrIdx))
+        recordNullIndicator[0] |= (1 << 7); // make the first bit in the null indicator null 
+    memcpy(data, &recordNullIndicator, 1); // place in the data
+    dataOffset += 1;
+
+    // move to the correct column for the offset
+    // |Record Length | Null Bytes | Col 1 | Col 2| ... | Data1 | Data2 | 
+    int colOffset = sizeof(RecordLength) + attrIdx * sizeof(ColumnOffset) + recordNullIndicatorSize;
+    ColumnOffset recDataOffset;
+    memcpy(&recDataOffset, (char*) recOffset + colOffset, sizeof(ColumnOffset));
+
+    // have the end of the attribute 
+    // need to check type of the attr 
+    // get to the prev element to see size of the record
+    ColumnOffset prevRecDataOffset;
+    if (attrIdx == 0) { // start is the end of column offsets
+        prevRecDataOffset = (intptr_t) recOffset + recordNullIndicatorSize + len * sizeof(ColumnOffset);
+    }
+    else { // get the prev record's end 
+        memcpy(&prevRecDataOffset, (char*) recOffset + colOffset - sizeof(ColumnOffset), sizeof(ColumnOffset));    
+    }
+    
+    // use length to check type 
+    int attrSize = recDataOffset - prevRecDataOffset;
+
+    if (attrSize == INT_SIZE) { // is the size of an int or real 
+        memcpy((char*) data + dataOffset, (char*) recOffset + recDataOffset, attrSize);
+    }
+    else { // must be var char
+        // have to copy the size of the var char first
+        memcpy((char*) data + dataOffset, &attrSize, sizeof(VARCHAR_LENGTH_SIZE));
+        dataOffset += VARCHAR_LENGTH_SIZE;
+        // place the actual var char in the data 
+        memcpy((char*) data + dataOffset, (char*) recOffset + recDataOffset, sizeof(attrSize));
+    }
+    // done data is formatted properly
+}
+
 // bring the free space towards the center of the page between the records and the slots
 void RecordBasedFileManager::compactPage(void *page)
 {
@@ -433,7 +564,7 @@ void RecordBasedFileManager::newRecordBasedPage(void * page)
     SlotDirectoryHeader slotHeader;
     slotHeader.freeSpaceOffset = PAGE_SIZE;
     slotHeader.recordEntriesNumber = 0;
-	memcpy (page, &slotHeader, sizeof(SlotDirectoryHeader));
+    memcpy (page, &slotHeader, sizeof(SlotDirectoryHeader));
 }
 
 unsigned RecordBasedFileManager::getRecordSize(const vector<Attribute> &recordDescriptor, const void *data) 

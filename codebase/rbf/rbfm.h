@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <utility>
 #include <inttypes.h>
+#include <cstdint>
 #include "../rbf/pfm.h"
 
 #define INT_SIZE                4
@@ -184,6 +185,7 @@ private:
 
   void setRecordAtOffset(void *page, unsigned offset, const vector<Attribute> &recordDescriptor, const void *data);
   void getRecordAtOffset(void *record, unsigned offset, const vector<Attribute> &recordDescriptor, void *data);
+  void insertAttrIntoData(void* page, SlotDirectoryRecordEntry sEntry, int attrIdx, void* data);
   void compactPage(void *page);
 
 };
