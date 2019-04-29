@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <climits>
+#include <algorithm>
+#include <utility>
 #include <inttypes.h>
 #include "../rbf/pfm.h"
 
@@ -182,6 +184,8 @@ private:
 
   void setRecordAtOffset(void *page, unsigned offset, const vector<Attribute> &recordDescriptor, const void *data);
   void getRecordAtOffset(void *record, unsigned offset, const vector<Attribute> &recordDescriptor, void *data);
+  void compactPage(void *page);
+
 };
 
 #endif

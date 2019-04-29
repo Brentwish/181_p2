@@ -211,6 +211,183 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     return SUCCESS;
 }
 
+RC deleteRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const RID &rid) 
+{
+    // get the page
+    void *page = malloc(PAGE_SIZE);
+    fileHandle.readPage(page, rid.pageNum);
+
+    // get the slot header
+    SlotDirectoryHeader sHeader = getSlotDirectoryHeader(page);
+}
+
+RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, const RID &rid) 
+{
+    // 1) check if the record is there
+    // first get the page 
+    void* page = malloc (PAGE_SIZE);
+    fileHandle.readPage(rid.pageNum, page);
+
+    // get the slotDirectoryHeader
+    SlotDirectoryHeader sHeader = getSlotDirectoryHeader(page);
+
+    // check if the rid is in range
+    // rid starts at 0
+    if (sHeader.recordEntriesNumber - 1 < rid.slotNum) {
+        free(page);
+        return RBFM_SLOT_DN_EXIST;
+    }
+
+    // 2) get the previous space the record takes up
+    // get the slot entry 
+    // need to make sure it's correct one 
+    // TODO!!!!
+    SlotDirectoryRecordEntry sEntry = getSlotDirectoryRecordEntry(page, rid.slotNum);
+
+    if (sEntry.length < 0 ) { // record moved 
+        RID temp; // create a new RID
+        temp.slotNum = sEntry.length * -1;
+        temp.pageNum = sEntry.offset;
+        RC ret = updateRecord(fileHandle, recordDescriptor, data, temp);
+        free(page);
+        return ret;
+    }
+    // get the space it takes up originally and the new one
+    uint32_t prevLen = sEntry.length;
+    unsigned newLen = getRecordSize(recordDescriptor, data); 
+
+    // the sizes of the entries matches
+    // just replace the old one 
+    if (prevLen == newLen) {
+        setRecordAtOffset(page, sEntry.offset, recordDescriptor, data);
+    }
+    // 3) check if more or less space 
+    // since the new one is more space 
+    else if (prevLen < newLen) {
+        // check if there is space on the page 
+        unsigned space = getPageFreeSpaceSize(page);
+        // there's not enough space in the page
+        // calculate as if the old record being deleted but slot still there
+        if (space + sEntry.length < newLen) {
+            // do the forwarding 
+            RID temp;
+            // get a new RID for the record
+            insertRecord(fileHandle, recordDescriptor, data, temp);
+
+            // put forwarding data in this slot 
+            sEntry.length = temp.slotNum * -1;
+            sEntry.offset = temp.pageNum;
+
+            // set the slot 
+            setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry);
+            // need to make room on the page since the record was moved
+            compactPage(page);
+        }
+        else if (space + sEntry.length > newLen) { // enough space in page
+            /// just place the new record where the freeSpace is 
+            sEntry.length = 4097;
+            setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry); // make the entry null first to compact
+            // compact the page as if the entry not there anymore
+            compactPage(page);
+            sHeader = getSlotDirectoryHeader(page); // need new header for the new freeSpaceOffset
+            sEntry.length = newLen;
+
+            // insert at the end of the freeSpace 
+            setRecordAtOffset(page, sHeader.freeSpaceOffset - newLen, recordDescriptor, data);
+            sEntry.offset = sHeader.freeSpaceOffset - newLen;
+            // update the directory before compacting 
+            // NEED TO DO THIS BECAUSE COMPACT PAGE USES SLOTS!!
+            setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry);
+        }
+    }
+    // less space taken up
+    // can fit on this page
+    else if (prevLen > newLen) {
+        // just place the new record where the freeSpace is 
+        sEntry.length = 4097;
+        setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry); // make the entry null first to compact
+        // compact the page as if the entry not there anymore
+        compactPage(page);
+        sHeader = getSlotDirectoryHeader(page);
+        sEntry.length = newLen;
+
+        // insert at the end of the freeSpace 
+        setRecordAtOffset(page, sHeader.freeSpaceOffset - newLen, recordDescriptor, data);
+        sEntry.offset = sHeader.freeSpaceOffset - newLen;
+        // update the directory before compacting 
+        // NEED TO DO THIS BECAUSE COMPACT PAGE USES SLOTS!!
+        setSlotDirectoryRecordEntry(page, rid.slotNum, sEntry);  
+    }
+
+    // 4) free everything and write the page 
+    // get rid of the old stuff and write 
+    fileHandle.writePage(rid.pageNum, page);
+    free(page);
+    return SUCCESS;
+
+}
+
+// bring the free space towards the center of the page between the records and the slots
+void RecordBasedFileManager::compactPage(void *page)
+{
+    // get the slot header 
+    SlotDirectoryHeader sHeader = getSlotDirectoryHeader(page);
+
+    // need to first get the slots for the whole page
+    uint16_t numSlots = sHeader.recordEntriesNumber;
+
+    // get the list of the records that are still on this page
+    vector<pair <SlotDirectoryRecordEntry, int> > realSlots;
+
+    for (int i=0; i < numSlots; i++) {
+        SlotDirectoryRecordEntry sEntry = getSlotDirectoryRecordEntry(page, i);
+        pair <SlotDirectoryRecordEntry, int> slotPair;
+        slotPair.first = sEntry;
+        slotPair.second = i;
+        uint32_t len = sEntry.length;
+        // check if the slot is still there
+        // length of larger than page means that the slot DNE
+        if (len != 4097) {
+            // check if the slot is moved 
+            if (sEntry.length > 0) { // not moved
+                realSlots.push_back(make_pair(sEntry, i));
+            }
+        }
+    }
+    // https://stackoverflow.com/questions/4892680/sorting-a-vector-of-structs
+    // change the index of the slot and sort it at the same time, but slot must stay the same
+    // need to sort so we don't overwrite anything we haven't moved
+    std::sort(realSlots.begin(), realSlots.end(), [](const std::pair<SlotDirectoryRecordEntry,int> &p2, const std::pair<SlotDirectoryRecordEntry,int> &p1) {
+        return p1.first.offset > p2.first.offset;
+    });
+
+    // need to do the actual moving of the record now 
+    // start filling from the top of the page
+    int pageOffset = PAGE_SIZE;
+
+    // iterate through our vector
+    for (int i=0; i < realSlots.size(); i++) {
+        pair <SlotDirectoryRecordEntry, int> vecPair;
+        vecPair = realSlots[i];
+        SlotDirectoryRecordEntry currSlot = vecPair.first;
+        int recLen = currSlot.length;
+        // create a new var the same size of the record
+        void* temp = malloc(recLen);
+        memcpy(temp, (char*) page + currSlot.offset, recLen);
+        // put it in the proper place
+        memcpy((char*) page + pageOffset - recLen, temp, recLen);
+        pageOffset = pageOffset - recLen;
+        currSlot.offset = pageOffset;
+        // update the entry
+        setSlotDirectoryRecordEntry(page, vecPair.second, currSlot);
+        free(temp);
+    }
+
+    // update the header of the slots 
+    sHeader.freeSpaceOffset = pageOffset;
+    setSlotDirectoryHeader(page, sHeader);
+}
+
 SlotDirectoryHeader RecordBasedFileManager::getSlotDirectoryHeader(void * page)
 {
     // Getting the slot directory header.
