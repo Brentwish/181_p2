@@ -5,6 +5,7 @@
 #include <vector>
 #include <climits>
 #include <inttypes.h>
+#include <unistd.h>
 #include "../rbf/pfm.h"
 
 #define INT_SIZE                4
@@ -155,6 +156,7 @@ IMPORTANT, PLEASE READ: All methods below this comment (other than the construct
       RBFM_ScanIterator &rbfm_ScanIterator);
 
 public:
+    bool checkFile(const string &fileName);
 
 protected:
   RecordBasedFileManager();
@@ -182,6 +184,8 @@ private:
 
   void setRecordAtOffset(void *page, unsigned offset, const vector<Attribute> &recordDescriptor, const void *data);
   void getRecordAtOffset(void *record, unsigned offset, const vector<Attribute> &recordDescriptor, void *data);
+
+    // return if the file exists
 };
 
 #endif

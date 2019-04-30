@@ -447,3 +447,8 @@ void RecordBasedFileManager::setRecordAtOffset(void *page, unsigned offset, cons
         header_offset += sizeof(ColumnOffset);
     }
 }
+
+// return if the file exists
+bool RecordBasedFileManager::checkFile(const string &fileName) {
+	return ( access( fileName.c_str(), F_OK ) != -1 );
+}
