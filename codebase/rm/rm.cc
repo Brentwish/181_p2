@@ -129,6 +129,7 @@ int RelationManager::insertColumns(FileHandle &fileHandle, const int id, const v
         rbfm->insertRecord(fileHandle, columnsRecDesc, record, rid);
         rbfm->printRecord(columnsRecDesc, record);
     }
+    free(record);
     return 0;
 }
 
