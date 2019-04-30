@@ -407,7 +407,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
       const vector<string> &attributeNames, // a list of projected attributes
       RBFM_ScanIterator &rbfm_ScanIterator) 
 {
-    // rbfm_ScanIterator.getIterator(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames);
+    rbfm_ScanIterator.getIterator(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames);
     return SUCCESS;
 }
 
@@ -418,12 +418,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
 // RBFM_ScanIterator::~RBFM_ScanIterator()
 // {
 // }
-void RBFM_ScanIterator::getIterator(FileHandle &fileHandle,
-      const vector<Attribute> &recordDescriptor,
-      const string &conditionAttribute,
-      const CompOp compOp,
-      const void *value,
-      const vector<string> &attributeNames)
+RC RBFM_ScanIterator::getIterator(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const string &conditionAttribute, const CompOp compOp, const void *value, const vector<string> &attributeNames)
 {
 	this->rbfm = RecordBasedFileManager::instance();
 
@@ -449,6 +444,7 @@ void RBFM_ScanIterator::getIterator(FileHandle &fileHandle,
     sHeader = rbfm->getSlotDirectoryHeader(page);
 
     free(page);
+    return SUCCESS;
 }
 
 // uses current RID to get next record
@@ -693,6 +689,11 @@ bool RBFM_ScanIterator::compareVarChars(char* str1, char* str2) {
 		return true;
 	}
 	return false;
+}
+
+RC RBFM_ScanIterator::close() 
+{
+	return SUCCESS;
 }
 
 void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordEntry sEntry, int attrIdx, void* data) 
