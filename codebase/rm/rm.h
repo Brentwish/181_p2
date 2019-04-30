@@ -4,6 +4,8 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
+#include <string.h>
 
 #include "../rbf/rbfm.h"
 
@@ -12,6 +14,8 @@ using namespace std;
 # define RM_EOF (-1)  // end of a scan operator
 
 #define MAX_TABLE_NAME_LENGTH 50;
+#define TABLES_NAME "Tables"
+#define COLUMNS_NAME "Columns"
 
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
@@ -64,6 +68,8 @@ public:
       const vector<string> &attributeNames, // a list of projected attributes
       RM_ScanIterator &rm_ScanIterator);
 
+  //Helper functions
+
 
 protected:
   RelationManager();
@@ -71,6 +77,13 @@ protected:
 
 private:
   static RelationManager *_rm;
+    int nextTableId = 0;
+    string toFilename(const string &tableName);
+    vector<Attribute> getTablesRecordDescriptor();
+    vector<Attribute> getColumnsRecordDescriptor();
+    int prepareTablesRecord(void *buffer, const int tableId, const string &tableName, const string &fileName);
+    int prepareColumnsRecord(void *buffer, const int tableId, const string &columnName, const int columnType, const int columnLength, const int columnPosition);
+    int insertColumns(FileHandle &fileHandle, const int id, const vector<Attribute> &attrs);
 };
 
 #endif
