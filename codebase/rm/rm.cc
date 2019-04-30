@@ -67,7 +67,7 @@ RC RelationManager::createCatalog() {
     recordSize = prepareTablesRecord(record, tablesId, TABLES_NAME, filename);
     //insert it into Tables
     rbfm->insertRecord(fileHandle, tablesRecDesc, record, rid);
-    rbfm->printRecord(tablesRecDesc, record);
+    //rbfm->printRecord(tablesRecDesc, record);
 
     //Clear the memory
     memset(record, 0, 100);
@@ -79,7 +79,7 @@ RC RelationManager::createCatalog() {
     columnsId = nextTableId++;
     recordSize = prepareTablesRecord(record, columnsId, COLUMNS_NAME, filename);
     rbfm->insertRecord(fileHandle, tablesRecDesc, record, rid);
-    rbfm->printRecord(tablesRecDesc, record);
+    //rbfm->printRecord(tablesRecDesc, record);
     //done with record
     free(record);
 
@@ -127,7 +127,7 @@ int RelationManager::insertColumns(FileHandle &fileHandle, const int id, const v
         //it should be
         prepareColumnsRecord(record, id, attr.name, attr.type, attr.length, i + 1);
         rbfm->insertRecord(fileHandle, columnsRecDesc, record, rid);
-        rbfm->printRecord(columnsRecDesc, record);
+        //rbfm->printRecord(columnsRecDesc, record);
     }
     free(record);
     return 0;
@@ -138,9 +138,65 @@ RC RelationManager::deleteCatalog()
     return -1;
 }
 
+
+//To create a table, we need to insert a record into the Tables table
+//and we need to insert each attr into the columns table
 RC RelationManager::createTable(const string &tableName, const vector<Attribute> &attrs)
 {
-    return -1;
+    //cout << "   CREATE TABLE   " << endl;
+    //cout << tableName << endl;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    RID rid;
+    FileHandle fileHandle;
+    string filename = toFilename(tableName);
+    void *record = malloc(100);
+    int recordSize, id;
+
+    //Check file doesn't exist
+    if (rbfm->checkFile(filename)) {
+        perror("RelationManager: createTable() file already exists");
+        return -1;
+    }
+    //Create the file
+    if (rbfm->createFile(tableName) != SUCCESS) {
+        perror("RelationManager: createTable() failed to create file");
+        return -1;
+    }
+
+    //Open the Tables table to insert the new table entry
+    // (new_id, tableName, filename)
+    if (rbfm->openFile("Tables.tbl", fileHandle) != SUCCESS) {
+        perror("RelationManager: createTable() failed to open Tables.tbl");
+        return -1;
+    }
+
+    //Insert the record
+    //Populate record with (table-id, table-name, file-name) in the correct format
+    id = nextTableId++;
+    recordSize = prepareTablesRecord(record, id, tableName, filename);
+    //insert it into Tables
+    rbfm->insertRecord(fileHandle, getTablesRecordDescriptor(), record, rid);
+    free(record);
+
+    //close the fileHandle
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: createTable() failed to close Tables.tbl");
+        return -1;
+    }
+
+    if (rbfm->openFile("Columns.tbl", fileHandle) != SUCCESS) {
+        perror("RelationManager: createTable() failed to close Tables.tbl");
+        return -1;
+    }
+    insertColumns(fileHandle, id, attrs);
+    //close the fileHandle
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: createTable() failed to close Tables.tbl");
+        return -1;
+    }
+
+
+    return 0;
 }
 
 RC RelationManager::deleteTable(const string &tableName)
