@@ -8,6 +8,7 @@
 #include <utility>
 #include <inttypes.h>
 #include <cstdint>
+#include <unistd.h>
 #include "../rbf/pfm.h"
 
 #define INT_SIZE                4
@@ -138,6 +139,7 @@ IMPORTANT, PLEASE READ: All methods below this comment (other than the construct
       RBFM_ScanIterator &rbfm_ScanIterator);
 
 public:
+    bool checkFile(const string &fileName);
 
 protected:
   RecordBasedFileManager();
