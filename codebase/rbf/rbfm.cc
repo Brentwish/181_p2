@@ -399,6 +399,302 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<At
     return SUCCESS;
 }
 
+RC RecordBasedFileManager::scan(FileHandle &fileHandle,
+      const vector<Attribute> &recordDescriptor,
+      const string &conditionAttribute,
+      const CompOp compOp,                  // comparision type such as "<" and "="
+      const void *value,                    // used in the comparison
+      const vector<string> &attributeNames, // a list of projected attributes
+      RBFM_ScanIterator &rbfm_ScanIterator) 
+{
+    // rbfm_ScanIterator.getIterator(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames);
+    return SUCCESS;
+}
+
+// RBFM_ScanIterator::RBFM_ScanIterator()
+// {
+// }
+
+// RBFM_ScanIterator::~RBFM_ScanIterator()
+// {
+// }
+void RBFM_ScanIterator::getIterator(FileHandle &fileHandle,
+      const vector<Attribute> &recordDescriptor,
+      const string &conditionAttribute,
+      const CompOp compOp,
+      const void *value,
+      const vector<string> &attributeNames)
+{
+	this->rbfm = RecordBasedFileManager::instance();
+
+    this->fileHandle = fileHandle;
+    this->rd = recordDescriptor;
+    this->condAttr = conditionAttribute;
+    this->compOp = compOp;
+    this->val = value;
+    this->attrNames = attributeNames;
+
+    currRid.slotNum = 0;
+    currRid.pageNum = 0;
+
+    void *page = malloc(PAGE_SIZE);
+
+    //read the first page into data 
+    uint32_t totPages = this->fileHandle.getNumberOfPages();
+
+    if (totPages > 0 ) // if the file has at least 1 page
+    	this->fileHandle.readPage(0,page);
+
+    // store the page header
+    sHeader = rbfm->getSlotDirectoryHeader(page);
+
+    free(page);
+}
+
+// uses current RID to get next record
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+    // what I need 
+
+    // find out which record we are at
+    // check if it's last record in the page
+	if (currRid.slotNum >= sHeader.recordEntriesNumber) {
+		currRid.slotNum = 0;
+		currRid.pageNum = currRid.pageNum + 1;
+		// if the last page then return eof 
+		if (currRid.pageNum >= fileHandle.getNumberOfPages()) {
+			return RBFM_EOF;
+		}
+
+		// get the slot header for the next page then
+		void *page = malloc(PAGE_SIZE);
+		fileHandle.readPage(currRid.pageNum, page);
+		sHeader = rbfm->getSlotDirectoryHeader(page);
+		free(page);
+	}
+
+	void *page = malloc(PAGE_SIZE);
+	fileHandle.readPage(currRid.pageNum, page);
+	if (currRid.slotNum >= sHeader.recordEntriesNumber) 
+		return RBFM_EOF;
+ 	// get the slot
+	SlotDirectoryRecordEntry sEntry = rbfm->getSlotDirectoryRecordEntry(page, currRid.slotNum);
+    
+    // check if slot is moved or dead
+    if (sEntry.length != 4097 || sEntry.length < 0) {
+    	// advance the slot
+    	currRid.slotNum = currRid.slotNum + 1;
+    	return getNextRecord(rid, data);
+    }
+    // check if record satisfies compOp
+    bool valid;
+    // Figure which attribute to get from the record to compare
+    int idx = 0;
+    while(rd[idx].name != condAttr) {
+    	idx++;
+    }
+    // get the exact attribute
+    rbfm->insertAttrIntoData(page, sEntry, idx, data); // has null indicator as 1st byte
+    //check if field is null
+    char nullBytes[1];
+    memcpy(&nullBytes, data, 1);
+    if (nullBytes) { // is null 
+    	valid = false;
+    }
+    // copy into appropriate var and compare
+    else if (rd[idx].type == TypeInt) {
+    	// current slot's value 
+    	int val1;
+    	memcpy(&val1,(char*) data + 1,INT_SIZE);
+    	// get the value that we are comparing to
+    	int val2;
+    	memcpy(&val2, val, INT_SIZE);
+
+    	// compare attr
+    	valid = compareInts(val1, val2);
+    }
+    else if (rd[idx].type == TypeReal) {
+    	// current slot's value 
+    	float val1;
+    	memcpy(&val1, (char*) data + 1, REAL_SIZE);
+    	// get the value that we are comparing to
+    	float val2;
+    	memcpy(&val2, val, REAL_SIZE);
+
+    	// compare attr
+    	valid = compareReals(val1, val2);
+    }
+    else if (rd[idx].type == TypeVarChar) {
+    	int varLen; 
+    	memcpy(&varLen, (char*) data + 1, VARCHAR_LENGTH_SIZE);
+    	char varString[varLen + 1]; // for null terminate
+    	memcpy(&varString, (char*) data + 1 + VARCHAR_LENGTH_SIZE, varLen);
+    	varString[varLen] = '\0';
+
+    	int varLen2;
+    	memcpy(&varLen2, val, VARCHAR_LENGTH_SIZE);
+    	char varString2[varLen2];
+    	memcpy(&varString2, (char*) val + VARCHAR_LENGTH_SIZE, varLen2);
+    	varString2[varLen2] = '\0';
+    	// compare attr
+
+    	valid = compareVarChars(varString, varString2);
+    }
+    // the current record didn't satisfy the condition
+    // do the same earlier
+    if (!valid) {
+    	currRid.slotNum = currRid.slotNum + 1;
+    	return getNextRecord(rid, data);
+    }
+
+    // fill the record into data but only the attributes they want 
+
+    // first the null indicators
+    unsigned size = rbfm->getNullIndicatorSize(attrNames.size());
+    char nullIndicator[size];
+    int dataOffset = 0; // used to insert into data 
+
+    // need to check if the field is null or not 
+    // do it as we go
+    dataOffset += size;
+
+    // create a list of the indexes we will access 
+    vector<int> indexList; 
+    for (int i = 0; i< attrNames.size(); i++) {
+    	int j = 0;
+    	Attribute attr = rd[j];
+    	while(attr.name != attrNames[i]) { // get the index for this name
+    		j++;
+    		attr = rd[j];
+    	}
+    	indexList.push_back(j);
+    }
+
+    void *attrPage = malloc(4096);
+    // to set the null indicator before the attributes
+    // for (int i=0; i < indexList.size(); i++) {
+    // 	if (fieldIsNull())
+    // }
+	
+	// get each record and see if it's null 
+    for (int i=0; i < indexList.size(); i++) {
+    	idx = indexList[i];
+    	Attribute attr = rd[idx];
+    	rbfm->insertAttrIntoData(page, sEntry, idx, attrPage);
+
+    	// check if this attr is null 
+    	char nullField[1];
+    	memcpy(&nullField, attrPage, 1);
+    	// similar to field is null 
+    	if (nullField) { // fill in the null indicator
+    		int bitIdx = i / CHAR_BIT;
+    		char bitMask = 1 << (CHAR_BIT - 1 - (1 % CHAR_BIT) );
+    		nullIndicator[bitIdx] |= bitMask;
+    	}
+    	else if (attr.type == TypeVarChar) {
+    		int varLen; 
+    		memcpy(&varLen, (char*) attrPage + 1, VARCHAR_LENGTH_SIZE);
+    		memcpy((char*) data + dataOffset, &varLen, VARCHAR_LENGTH_SIZE);
+    		dataOffset += VARCHAR_LENGTH_SIZE;
+    		char varString[varLen + 1];
+    		memcpy(&varString, (char*) attrPage + 1 + VARCHAR_LENGTH_SIZE, varLen);
+    		memcpy((char*) data + dataOffset, &varString, varLen);
+    		dataOffset += varLen;
+    	}
+    	else { // must be int or real
+    		memcpy((char*) data + dataOffset,(char*) attrPage + 1, INT_SIZE);
+    		dataOffset += INT_SIZE;
+    	}
+    }
+
+	// write the new null indicator 
+	memcpy((char*) data, nullIndicator, size);
+
+	// change the rid to be updated
+	rid.pageNum = currRid.pageNum;
+	currRid.slotNum = currRid.slotNum + 1; // increase to the next slot
+	rid.slotNum = currRid.slotNum;
+    free(attrPage);
+    free(page);
+    return SUCCESS;
+}
+
+bool RBFM_ScanIterator::compareInts(int val1, int val2) {
+	if (compOp == EQ_OP) {
+		return (val1 == val2);
+	}
+	else if (compOp == LT_OP) {
+		return (val1 < val2);
+	}
+	else if (compOp == LE_OP) {
+		return (val1 <= val2);
+	}
+	else if (compOp == GT_OP) {
+		return (val1 > val2);
+	}
+	else if (compOp == GE_OP) {
+		return (val1 >= val2);
+	}
+	else if (compOp == NE_OP) {
+		return (val1 != val2);
+	}
+	else if (compOp == NO_OP) {
+		return true;
+	}
+	return false;
+}
+
+bool RBFM_ScanIterator::compareReals(float val1, float val2) {
+	if (compOp == EQ_OP) {
+		return (val1 == val2);
+	}
+	else if (compOp == LT_OP) {
+		return (val1 < val2);
+	}
+	else if (compOp == LE_OP) {
+		return (val1 <= val2);
+	}
+	else if (compOp == GT_OP) {
+		return (val1 > val2);
+	}
+	else if (compOp == GE_OP) {
+		return (val1 >= val2);
+	}
+	else if (compOp == NE_OP) {
+		return (val1 != val2);
+	}
+	else if (compOp == NO_OP) {
+		return true;
+	}
+	return false;
+}
+
+bool RBFM_ScanIterator::compareVarChars(char* str1, char* str2) {
+	int diff = strcmp(str1, str2); // get the difference in the strings 
+
+	if (compOp == EQ_OP) {
+		return (diff == 0);
+	}
+	else if (compOp == LT_OP) {
+		return (diff < 0);
+	}
+	else if (compOp == LE_OP) {
+		return (diff <= 0);
+	}
+	else if (compOp == GT_OP) {
+		return (diff > 0);
+	}
+	else if (compOp == GE_OP) {
+		return (diff >= 0);
+	}
+	else if (compOp == NE_OP) {
+		return (diff != 0);
+	}
+	else if (compOp == NO_OP) {
+		return true;
+	}
+	return false;
+}
+
 void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordEntry sEntry, int attrIdx, void* data) 
 {
     // get to the start of the offset in the page

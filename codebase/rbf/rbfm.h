@@ -78,31 +78,11 @@ The scan iterator is NOT required to be implemented for the part 1 of the projec
 
 # define RBFM_EOF (-1)  // end of a scan operator
 
-// RBFM_ScanIterator is an iterator to go through records
-// The way to use it is like the following:
-//  RBFM_ScanIterator rbfmScanIterator;
-//  rbfm.open(..., rbfmScanIterator);
-//  while (rbfmScanIterator(rid, data) != RBFM_EOF) {
-//    process the data;
-//  }
-//  rbfmScanIterator.close();
-
-class RBFM_ScanIterator {
-public:
-  RBFM_ScanIterator() {};
-  ~RBFM_ScanIterator() {};
-
-  // Never keep the results in the memory. When getNextRecord() is called, 
-  // a satisfying record needs to be fetched from the file.
-  // "data" follows the same format as RecordBasedFileManager::insertRecord().
-  RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
-  RC close() { return -1; };
-};
-
-
+class RBFM_ScanIterator;
 class RecordBasedFileManager
 {
 public:
+  friend class RBFM_ScanIterator;
   static RecordBasedFileManager* instance();
 
   RC createFile(const string &fileName);
@@ -189,5 +169,53 @@ private:
   void compactPage(void *page);
 
 };
+
+// RBFM_ScanIterator is an iterator to go through records
+// The way to use it is like the following:
+//  RBFM_ScanIterator rbfmScanIterator;
+//  rbfm.open(..., rbfmScanIterator);
+//  while (rbfmScanIterator(rid, data) != RBFM_EOF) {
+//    process the data;
+//  }
+//  rbfmScanIterator.close();
+
+class RBFM_ScanIterator {
+  // need to get slot header, etc.
+  friend class RecordBasedFileManager;
+
+public:
+  RBFM_ScanIterator() {};
+  ~RBFM_ScanIterator() {};
+
+  // Never keep the results in the memory. When getNextRecord() is called, 
+  // a satisfying record needs to be fetched from the file.
+  // "data" follows the same format as RecordBasedFileManager::insertRecord().
+  RC getNextRecord(RID &rid, void *data);
+  RC close() { return -1; };
+  
+private: 
+
+  FileHandle fileHandle;
+  vector<Attribute> rd;
+  string condAttr;
+  CompOp compOp;
+  const void *val;
+  vector<string> attrNames;
+
+  RID currRid; 
+  SlotDirectoryHeader sHeader;
+  RecordBasedFileManager *rbfm;
+
+  void getIterator(FileHandle &fileHandle,
+      const vector<Attribute> &recordDescriptor,
+      const string &conditionAttribute,
+      const CompOp compOp,
+      const void *value,
+      const vector<string> &attributeNames);
+  bool compareInts(int val1, int val2);
+  bool compareReals(float val1, float val2);
+  bool compareVarChars(char* str1, char* str2);
+};
+
 
 #endif
