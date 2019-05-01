@@ -61,7 +61,7 @@ RC RelationManager::createCatalog() {
     //Populate a record with (table-id, table-name, file-name) in the correct format
     record = malloc(100);
     memset(record, 0, 100);
-    tablesId = nextTableId++;
+    tablesId = ++nextTableId;
     //cout << "id: " << id << endl;
     prepareTablesRecord(record, tablesId, TABLES_NAME, filename);
     //insert it into Tables
@@ -75,7 +75,7 @@ RC RelationManager::createCatalog() {
     filename = toFilename(COLUMNS_NAME);
 
     //Populate a record for the columns table
-    columnsId = nextTableId++;
+    columnsId = ++nextTableId;
     prepareTablesRecord(record, columnsId, COLUMNS_NAME, filename);
     rbfm->insertRecord(fileHandle, tablesRecDesc, record, rid);
     //rbfm->printRecord(tablesRecDesc, record);
@@ -156,21 +156,21 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
         return -1;
     }
     //Create the file
-    if (rbfm->createFile(tableName) != SUCCESS) {
+    if (rbfm->createFile(filename) != SUCCESS) {
         perror("RelationManager: createTable() failed to create file");
         return -1;
     }
 
     //Open the Tables table to insert the new table entry
     // (new_id, tableName, filename)
-    if (rbfm->openFile("Tables.tbl", fileHandle) != SUCCESS) {
+    if (rbfm->openFile(toFilename(TABLES_NAME), fileHandle) != SUCCESS) {
         perror("RelationManager: createTable() failed to open Tables.tbl");
         return -1;
     }
 
     //Insert the record
     //Populate record with (table-id, table-name, file-name) in the correct format
-    id = nextTableId++;
+    id = ++nextTableId;
     prepareTablesRecord(record, id, tableName, filename);
     //insert it into Tables
     rbfm->insertRecord(fileHandle, getTablesRecordDescriptor(), record, rid);
