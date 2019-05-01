@@ -10,26 +10,127 @@ ID#s and Names for others on the Team
 
 
 3. Internal Record Format
+  |___________________________________________________|
+  |                                                   |
+  | | f1 | f2 | ... | fK | F1 | F2 | ... | FK |   |
+  |___________________________________________________|
+  
 - Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that your team hasn't implemented this feature.
+  
+  Let K be the number of fields in each record. Each field can be variable
+  length. To get O(1) access to the jth field, we keep a directory of field
+  offsets at the beginning of each slot. The first K bytes of each slot
+  contains offsets to each of the K fields, so to read the jth field, calculate
+  the offset fj = S+j (where S is the offset to the slot) and the value at fj
+  contains the location of field Fj.
+  
+  (same as last time) 
+  
 - Describe how you store a VarChar field.
-- Describe how you deal with an update and delete.
+  |___________________________________________________|
+  |                                                   |
+  | | f1 | f2 | ... | fK | FLen|F1 | F2 | ... | FK |  |
+  |___________________________________________________|
+  We are storing it similar to the solution provided where there is a number to indicate how long the varChar is at the beginning of the data value and then the actual data after. 
 
+- Describe how you deal with an update and delete.
+  We just delete the record by finding the length and offset from its RID's slot. We do the same for update, however we keep track of the slot and then insert at the end and fill into the slot. 
 
 4. Page Format
 - Show your page format design.
-- Describe how you deal with an update and delete.
+_____________________________________________________________
+|record1 | record 2|                                        |
+|                                                           |
+|                                                           |
+|                                                           |
+|record n|                                                  |
+|-----------------------------------------------------------|
+|*****FREE SPACE *****                                      |
+|                                                           |
+|                                                           |
+|_______________________________________|slot2|slot1|slotDir|
 
+We took the design from the first program solution which places the slot directory at the bottom (start) of the page and the records at the top (end) of the page.
+The slot and and header for the page is at the bottom and the actual records are stored at the top, with the free space being in the middle. 
+
+- Describe how you deal with an update and delete.
+_____________________________________________________________
+|record1 | record 2|                                        |
+|                                                           |
+|                                                           |
+|                                                           |
+|record n|                                                  |
+|-----------------------------------------------------------|
+|*****FREE SPACE *****                                      |
+|                                                           |
+|                                                           |
+|_______________________________________|slot2|slot1|slotDir|
+  a. set the slot length to something it can't be -> 
+            delete: 4097 (records can't be bigger than the page)
+            update: if forwarded neeeded -> length = slotNum * -1 , offset = pageNum 
+  _______________________________________________________________________
+|record1 | record 2|                                                    |
+|                                                                       |
+|                                                                       |
+|                                                                       |
+|record n|                                                              |
+|-----------------------------------------------------------------------|
+|*****FREE SPACE *****                                                  |
+|                                                                       |
+|                                                                       |
+|_______________________________________|slot2(len = 4097)|slot1|slotDir|
+  b. use the unreachable slot length to compact the page and move the records up by iterating through the slots
+    _____________________________________________________________________________
+|record1 | record 3|                                                            |
+|                                                                               |
+|                                                                               |
+|                                                                               |
+|record n|                                                                      |
+|-------------------------------------------------------------------------------|
+|*****FREE SPACE MOVED UP*****                                                  |
+|                                                                               |
+|                                                                               |
+|_______________________________________|slot2(offset = freeSpace)|slot1|slotDir|
+  c. (for update only) then insert the new record at the end and fill into the first slot you get 
+  
 
 5. File Format
 - Show your file format design.
+The file is just a file which gets pages appended to it and written to disk. It is all one contiguous file which we created virtual pages by increasing the size of the file. The pages are of size 4096 bytes. 
+--------
+| file |
+|      |
+|______|
+--------
+| page0|
+|      |
+|______|
+--------
+| page1|
+|      |
+|______|
+   .
+   .
+   .
+   .
+--------
+| pageN|
+|      |
+|______|
 
 
 
 6. Implementation Detail
 - Other implementation details goes here.  For example:  
 - Describe your use of Forwarding Addresses, including what happens when a Forwarding Address needs to be forwarded to yet another page.
+  When we forward address we first calculate if the size of the slot is going to smaller or bigger. If it's smaller then we just insert into the same spot and compact the page. If it's bigger, then we see if we need to forward by checking if the new record fits on this page or not. If it doesn't then we have to forward. We just insert into the next available place in our file, and get the returned RID and fill in the current slot with: 1) length = newRid.slotNum * -1; offset = newRid.pageNum; Then we return as the old slot is filled with the new forwarded data.  
+
+
 - Describe how a scan is done, touching each record once even when there are Forwarding Addresses.
+  We keep a state of which RID we are on in the iterator. Then when we try to get the next record, we first check if the current slot is the last one on the page, if so then get the next page unless it was the last page. Use the newly acquired page to get the slotEntry starting at 0. If the slot is moved or dead then we don't need to worry about it since we will eventually get to it. If it's there, then we need to check if it satisfies the condition in the scan. We use a helper function for readAttribute since it applies here as well to help check the condition for the attribute we are looking for. If it fails either of those, then we try to get the next slot. We get the indices of the attributes we want and them just place them into the data in order. 
+  
 - Describe how you determine that a previously slot on a page is empty (after record is deleted), so that the slot can be re-used for another record.  (Yes, a record's rid is supposed to be permanent, but only while the record exists.)
+  The simple solution was to set the length of the slot to be 4097 (1 greater than the size of the page) so that way we can know if the record still exists or not, since the size of a record cannot be greater than the page (spec says so). 
 
 
 7. Other (optional)
