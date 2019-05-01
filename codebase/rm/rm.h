@@ -77,7 +77,7 @@ protected:
 
 private:
   static RelationManager *_rm;
-    int nextTableId = 0;
+    int nextTableId = -1;
     string toFilename(const string &tableName);
     vector<Attribute> getTablesRecordDescriptor();
     vector<Attribute> getColumnsRecordDescriptor();
