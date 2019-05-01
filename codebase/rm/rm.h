@@ -84,6 +84,7 @@ private:
     int prepareTablesRecord(void *buffer, const int tableId, const string &tableName, const string &fileName);
     int prepareColumnsRecord(void *buffer, const int tableId, const string &columnName, const int columnType, const int columnLength, const int columnPosition);
     int insertColumns(FileHandle &fileHandle, const int id, const vector<Attribute> &attrs);
+    int getTableId(const string &tableName);
 };
 
 #endif

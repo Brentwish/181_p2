@@ -203,8 +203,79 @@ RC RelationManager::deleteTable(const string &tableName)
     return -1;
 }
 
+int RelationManager::getTableId(const string &tableName) {
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    RBFM_ScanIterator iterator;
+    FileHandle fileHandle;
+    RID rid;
+    vector<Attribute> tableRecDesc;
+    string condAttr;
+    void *value, *data;
+    int valueSize, tableNameLength, id;
+    vector<string> attrNames;
+
+    if (rbfm->openFile(toFilename(TABLES_NAME), fileHandle) != SUCCESS) {
+        perror("RelationManager: getTableId() failed to open Tables.tbl");
+        return -1;
+    }
+
+    // scan Tables for the unique tableName
+    // Set up each of the following values to be passed to scan
+    //     (fileHandle, tableRecDesc, condAttr, EQ_OP, tableName, ["table-id"], rbfm_si)
+
+    tableRecDesc = getTablesRecordDescriptor();
+    condAttr = "table-name";
+
+    //We need to fill *value with tableName's length followed by tableName
+    tableNameLength = tableName.length();
+    valueSize = tableNameLength + INT_SIZE;
+    value = malloc(valueSize);
+    memset(value, 0, valueSize);
+    memcpy(value, &tableNameLength, INT_SIZE);
+    memcpy((char *)value + INT_SIZE, tableName.c_str(), tableNameLength);
+
+    attrNames.push_back("table-id");
+
+    rbfm->scan(fileHandle, tableRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
+    free(value);
+    //close the fileHandle
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: getTableId() failed to close Tables.tbl");
+        return -1;
+    }
+
+    data = malloc(1 + INT_SIZE);
+
+    cout << "Before\n";
+    iterator.getNextRecord(rid, data);
+        //data contains a null byte for the attr plus the attr itself
+        //we know this attr can't be null so we can ignore the byte
+    cout << "After\n";
+    //vector<Attribute> temp;
+    //Attribute t;
+    //t.name = "table-id";
+    //t.type = TypeInt;
+    //t.length = INT_SIZE;
+    //temp.push_back(t);
+    //cout << "Print Record\n";
+    //rbfm->printRecord(temp, data);
+
+    memcpy(&id, (char *)data + 1, INT_SIZE);
+    return id;
+}
+
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
+    //RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    //RID rid;
+    //FileHandle fileHandle;
+    int id;
+    //Get the id of tableName from Tables
+    id = getTableId(tableName);
+    cout << "Found id: " << id << endl;
+
+    //use it to key into columns
+    //search for the entry's with that id and append them to attrs
     return -1;
 }
 
