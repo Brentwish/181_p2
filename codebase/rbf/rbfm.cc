@@ -152,7 +152,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
     SlotDirectoryRecordEntry recordEntry = getSlotDirectoryRecordEntry(pageData, rid.slotNum);
 
     // check if the slot is in this page
-    if (recordEntry.length != 4097 ) {
+    if (recordEntry.length == 4097 ) {
     	free(pageData);
     	return 1;
     }
@@ -475,14 +475,17 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 		}
 
 		// get the slot header for the next page then
-		void *page = malloc(PAGE_SIZE);
-		fileHandle.readPage(currRid.pageNum, page);
-		sHeader = rbfm->getSlotDirectoryHeader(page);
-		free(page);
+		void *page1 = malloc(PAGE_SIZE);
+		fileHandle.readPage(currRid.pageNum, page1);
+		sHeader = rbfm->getSlotDirectoryHeader(page1);
+		free(page1);
 	}
 
 	void *page = malloc(PAGE_SIZE);
-	fileHandle.readPage(currRid.pageNum, page);
+	if (fileHandle.readPage(currRid.pageNum, page) ){ // if error
+        free(page);
+        return 2;
+    }
 	if (currRid.slotNum >= sHeader.recordEntriesNumber) 
 		return RBFM_EOF;
  	// get the slot
