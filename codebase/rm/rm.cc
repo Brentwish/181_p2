@@ -44,7 +44,7 @@ RC RelationManager::createCatalog() {
     string filename;
     RID rid; //will we ever care about rid in this function?
     void *record;
-    int tablesId, columnsId, recordSize;
+    int tablesId, columnsId;
     vector<Attribute> tablesRecDesc = getTablesRecordDescriptor();
     vector<Attribute> columnsRecDesc = getColumnsRecordDescriptor();
 
@@ -63,8 +63,7 @@ RC RelationManager::createCatalog() {
     memset(record, 0, 100);
     tablesId = nextTableId++;
     //cout << "id: " << id << endl;
-    //recordSize is not needed for anything
-    recordSize = prepareTablesRecord(record, tablesId, TABLES_NAME, filename);
+    prepareTablesRecord(record, tablesId, TABLES_NAME, filename);
     //insert it into Tables
     rbfm->insertRecord(fileHandle, tablesRecDesc, record, rid);
     //rbfm->printRecord(tablesRecDesc, record);
@@ -77,7 +76,7 @@ RC RelationManager::createCatalog() {
 
     //Populate a record for the columns table
     columnsId = nextTableId++;
-    recordSize = prepareTablesRecord(record, columnsId, COLUMNS_NAME, filename);
+    prepareTablesRecord(record, columnsId, COLUMNS_NAME, filename);
     rbfm->insertRecord(fileHandle, tablesRecDesc, record, rid);
     //rbfm->printRecord(tablesRecDesc, record);
     //done with record
@@ -127,7 +126,6 @@ int RelationManager::insertColumns(FileHandle &fileHandle, const int id, const v
         //it should be
         prepareColumnsRecord(record, id, attr.name, attr.type, attr.length, i + 1);
         rbfm->insertRecord(fileHandle, columnsRecDesc, record, rid);
-        //rbfm->printRecord(columnsRecDesc, record);
     }
     free(record);
     return 0;
@@ -150,7 +148,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     FileHandle fileHandle;
     string filename = toFilename(tableName);
     void *record = malloc(100);
-    int recordSize, id;
+    int id;
 
     //Check file doesn't exist
     if (rbfm->checkFile(filename)) {
@@ -173,9 +171,10 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     //Insert the record
     //Populate record with (table-id, table-name, file-name) in the correct format
     id = nextTableId++;
-    recordSize = prepareTablesRecord(record, id, tableName, filename);
+    prepareTablesRecord(record, id, tableName, filename);
     //insert it into Tables
     rbfm->insertRecord(fileHandle, getTablesRecordDescriptor(), record, rid);
+    rbfm->printRecord(getTablesRecordDescriptor(), record);
     free(record);
 
     //close the fileHandle
@@ -185,13 +184,13 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     }
 
     if (rbfm->openFile("Columns.tbl", fileHandle) != SUCCESS) {
-        perror("RelationManager: createTable() failed to close Tables.tbl");
+        perror("RelationManager: createTable() failed to open Columns.tbl");
         return -1;
     }
     insertColumns(fileHandle, id, attrs);
     //close the fileHandle
     if (rbfm->closeFile(fileHandle)) {
-        perror("RelationManager: createTable() failed to close Tables.tbl");
+        perror("RelationManager: createTable() failed to close Columns.tbl");
         return -1;
     }
 
