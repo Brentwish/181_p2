@@ -266,17 +266,42 @@ int RelationManager::getTableId(const string &tableName) {
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-    //RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-    //RID rid;
-    //FileHandle fileHandle;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    RBFM_ScanIterator iterator;
+    FileHandle fileHandle;
+    RID rid;
+    vector<Attribute> columnRecDesc;
+    string condAttr;
+    void *value, *data;
+    vector<string> attrNames;
     int id;
     //Get the id of tableName from Tables
+    //use it to key into columns
     id = getTableId(tableName);
     cout << "Found id: " << id << endl;
+    
+    //if (rbfm->openFile(toFilename(COLUMNS_NAME), fileHandle) != SUCCESS) {
+    //    perror("RelationManager: getAttributes() failed to open Columns.tbl");
+    //    return -1;
+    //}
 
-    //use it to key into columns
-    //search for the entry's with that id and append them to attrs
-    return -1;
+    //columnRecDesc = getColumnsRecordDescriptor();
+    //condAttr = "table-id";
+    //value = malloc(INT_SIZE);
+    //memcpy(value, &id, INT_SIZE);
+    //attrNames.push_back("column-name");
+    //attrNames.push_back("column-type");
+    //attrNames.push_back("column-length");
+    //attrNames.push_back("column-position");
+
+    ////search for the entry's with that id and append them to attrs
+    //rbfm->scan(fileHandle, columnRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
+
+    //if (rbfm->closeFile(fileHandle)) {
+    //    perror("RelationManager: getAttributes() failed to close Columns.tbl");
+    //    return -1;
+    //}
+    //return -1;
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
