@@ -159,8 +159,8 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
     if (recordEntry.length < 0) { // moved record
     	free(pageData);
     	RID temp;
-        temp.slotNum = sEntry.length * -1;
-        temp.pageNum = sEntry.offset;
+        temp.slotNum = recordEntry.length * -1;
+        temp.pageNum = recordEntry.offset;
         return readRecord(fileHandle, recordDescriptor, temp, data);
     }
 
