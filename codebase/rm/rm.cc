@@ -371,7 +371,18 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 
 RC RelationManager::readTuple(const string &tableName, const RID &rid, void *data)
 {
-    return -1;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    vector<Attribute> rd;
+    FileHandle fh;
+
+    getAttributes(tableName, rd); // fill the rd 
+    rbfm->openFile(toFilename(tableName), fh);
+
+    // just read in the record into the data slot since record = tuple
+    RC rc = rbfm->readRecord(fh, rd, rid, data);
+    rbfm->closeFile(fh);
+    return rc;
+
 }
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
