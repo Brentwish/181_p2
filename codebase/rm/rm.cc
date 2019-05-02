@@ -277,19 +277,20 @@ int RelationManager::getTableId(const string &tableName) {
     }
 
     memcpy(&id, (char *)data + 1, INT_SIZE);
+    free(data);
     return id + 1;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-    RBFM_ScanIterator iterator;
-    FileHandle fileHandle;
-    RID rid;
-    vector<Attribute> columnRecDesc;
-    string condAttr;
-    void *value, *data;
-    vector<string> attrNames;
+    // RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    // RBFM_ScanIterator iterator;
+    // FileHandle fileHandle;
+    // RID rid;
+    // vector<Attribute> columnRecDesc;
+    // string condAttr;
+    // void *value, *data;
+    // vector<string> attrNames;
     int id;
     //Get the id of tableName from Tables
     //use it to key into columns

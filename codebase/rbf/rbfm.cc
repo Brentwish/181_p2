@@ -397,8 +397,10 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<At
         // do the operation on the correct page
         RC ret = readAttribute(fileHandle, recordDescriptor, temp, attributeName, data);
 
-        if (ret == 0 ) 
+        if (ret == 0 ) {
+            free(page);
             return SUCCESS;
+        }
     }
 
     // find the index of the attribute we are looking for 
@@ -489,8 +491,10 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         free(page);
         return 2;
     }
-	if (currRid.slotNum >= sHeader.recordEntriesNumber) 
+	if (currRid.slotNum >= sHeader.recordEntriesNumber) {
+        free(page);
 		return RBFM_EOF;
+    }
  	// get the slot
 	SlotDirectoryRecordEntry sEntry = rbfm->getSlotDirectoryRecordEntry(page, currRid.slotNum);
     
@@ -498,6 +502,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     if (sEntry.length == 4097 || sEntry.length < 0) {
     	// advance the slot
     	currRid.slotNum = currRid.slotNum + 1;
+        free(page);
     	return getNextRecord(rid, data);
     }
     // check if record satisfies compOp
@@ -557,7 +562,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     // the current record didn't satisfy the condition
     // do the same earlier
     if (!valid) {
-    	currRid.slotNum = currRid.slotNum + 1;
+    	free(page);
+        currRid.slotNum = currRid.slotNum + 1;
     	return getNextRecord(rid, data);
     }
 
