@@ -291,7 +291,6 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
     //Get the id of tableName from Tables
     //use it to key into columns
     id = getTableId(tableName);
-    cout << "Found id: " << id << endl;
 
     if (rbfm->openFile(toFilename(COLUMNS_NAME), fileHandle) != SUCCESS) {
         perror("RelationManager: getAttributes() failed to open Columns.tbl");
@@ -356,7 +355,28 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
-    return -1;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    FileHandle fileHandle;
+    vector<Attribute> attrs;
+
+    if (isAdmin(tableName)) {
+        perror("RelationManager: insertTuple() invalid table");
+        return -1;
+    }
+
+    if (rbfm->openFile(toFilename(tableName), fileHandle) != SUCCESS) {
+        perror("RelationManager: insertTuple() failed to open table");
+        return -1;
+    }
+
+    getAttributes(tableName, attrs);
+    rbfm->insertRecord(fileHandle, attrs, data, rid);
+
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: insertTuple() failed to close table");
+        return -1;
+    }
+    return 0;
 }
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
@@ -387,7 +407,9 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 {
-	return -1;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    rbfm->printRecord(attrs, data);
+    return 0;
 }
 
 RC RelationManager::readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data)
@@ -541,4 +563,9 @@ vector<Attribute> RelationManager::getColumnsRecordDescriptor() {
     record.push_back(attr);
 
     return record;
+}
+
+bool RelationManager::isAdmin(const string &tableName) {
+    int id = getTableId(tableName);
+    return id == 1 || id == 2;
 }
