@@ -482,6 +482,9 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 	}
 
 	void *page = malloc(PAGE_SIZE);
+    if (page == NULL){
+        return RBFM_MALLOC_FAILED;
+    }
 	if (fileHandle.readPage(currRid.pageNum, page) ){ // if error
         free(page);
         return 2;
@@ -492,7 +495,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 	SlotDirectoryRecordEntry sEntry = rbfm->getSlotDirectoryRecordEntry(page, currRid.slotNum);
     
     // check if slot is moved or dead
-    if (sEntry.length != 4097 || sEntry.length < 0) {
+    if (sEntry.length == 4097 || sEntry.length < 0) {
     	// advance the slot
     	currRid.slotNum = currRid.slotNum + 1;
     	return getNextRecord(rid, data);
@@ -507,7 +510,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     // get the exact attribute
     rbfm->insertAttrIntoData(page, sEntry, idx, data); // has null indicator as 1st byte
     //check if field is null
-    char nullBytes[1];
+    char nullBytes;
     memcpy(&nullBytes, data, 1);
     if (nullBytes) { // is null 
     	valid = false;
@@ -544,7 +547,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 
     	int varLen2;
     	memcpy(&varLen2, val, VARCHAR_LENGTH_SIZE);
-    	char varString2[varLen2];
+    	char varString2[varLen2 + 1];
     	memcpy(&varString2, (char*) val + VARCHAR_LENGTH_SIZE, varLen2);
     	varString2[varLen2] = '\0';
     	// compare attr
@@ -563,6 +566,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     // first the null indicators
     unsigned size = rbfm->getNullIndicatorSize(attrNames.size());
     char nullIndicator[size];
+    memset(nullIndicator,0, size );
     int dataOffset = 0; // used to insert into data 
 
     // need to check if the field is null or not 
@@ -594,7 +598,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     	rbfm->insertAttrIntoData(page, sEntry, idx, attrPage);
 
     	// check if this attr is null 
-    	char nullField[1];
+    	char nullField;
     	memcpy(&nullField, attrPage, 1);
     	// similar to field is null 
     	if (nullField) { // fill in the null indicator
@@ -749,7 +753,7 @@ void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordE
     // get to the prev element to see size of the record
     ColumnOffset prevRecDataOffset;
     if (attrIdx == 0) { // start is the end of column offsets
-        prevRecDataOffset = (intptr_t) recOffset + recordNullIndicatorSize + len * sizeof(ColumnOffset);
+        prevRecDataOffset = sizeof(RecordLength) + recordNullIndicatorSize + len * sizeof(ColumnOffset) ;
     }
     else { // get the prev record's end 
         memcpy(&prevRecDataOffset, (char*) recOffset + colOffset - sizeof(ColumnOffset), sizeof(ColumnOffset));    
@@ -759,14 +763,14 @@ void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordE
     int attrSize = recDataOffset - prevRecDataOffset;
 
     if (attrSize == INT_SIZE) { // is the size of an int or real 
-        memcpy((char*) data + dataOffset, (char*) recOffset + recDataOffset, attrSize);
+        memcpy((char*) data + dataOffset, (char*) recOffset + prevRecDataOffset, attrSize);
     }
     else { // must be var char
         // have to copy the size of the var char first
         memcpy((char*) data + dataOffset, &attrSize, sizeof(VARCHAR_LENGTH_SIZE));
         dataOffset += VARCHAR_LENGTH_SIZE;
         // place the actual var char in the data 
-        memcpy((char*) data + dataOffset, (char*) recOffset + recDataOffset, sizeof(attrSize));
+        memcpy((char*) data + dataOffset, (char*) recOffset + prevRecDataOffset, attrSize);
     }
     // done data is formatted properly
 }

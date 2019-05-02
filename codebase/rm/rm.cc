@@ -133,7 +133,23 @@ int RelationManager::insertColumns(FileHandle &fileHandle, const int id, const v
 
 RC RelationManager::deleteCatalog()
 {
-    return -1;
+    RecordBasedFileManager * rbfm = RecordBasedFileManager::instance();
+    string filename;
+    filename = toFilename(TABLES_NAME);
+
+    RC rc; 
+    rc = rbfm->destroyFile(filename);
+    if (rc) {
+        return rc;
+    }
+
+    filename = toFilename(COLUMNS_NAME);
+    rc = rbfm->destroyFile(filename);
+    if (rc) {
+        return rc;
+    }
+    
+    return SUCCESS;   
 }
 
 
@@ -174,6 +190,9 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     prepareTablesRecord(record, id, tableName, filename);
     //insert it into Tables
     rbfm->insertRecord(fileHandle, getTablesRecordDescriptor(), record, rid);
+    // void* data = malloc(PAGE_SIZE);
+    // rbfm->readRecord(fileHandle, getTablesRecordDescriptor(), rid, data);
+    // rbfm->printRecord(getTablesRecordDescriptor(), data);
     rbfm->printRecord(getTablesRecordDescriptor(), record);
     free(record);
 
@@ -237,12 +256,7 @@ int RelationManager::getTableId(const string &tableName) {
     attrNames.push_back("table-id");
 
     rbfm->scan(fileHandle, tableRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
-    free(value);
-    //close the fileHandle
-    if (rbfm->closeFile(fileHandle)) {
-        perror("RelationManager: getTableId() failed to close Tables.tbl");
-        return -1;
-    }
+    
 
     data = malloc(1 + INT_SIZE);
 
@@ -251,6 +265,13 @@ int RelationManager::getTableId(const string &tableName) {
         //data contains a null byte for the attr plus the attr itself
         //we know this attr can't be null so we can ignore the byte
     cout << "After\n";
+
+    //close the fileHandle
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: getTableId() failed to close Tables.tbl");
+        return -1;
+    }
+
     //vector<Attribute> temp;
     //Attribute t;
     //t.name = "table-id";
@@ -261,7 +282,8 @@ int RelationManager::getTableId(const string &tableName) {
     //rbfm->printRecord(temp, data);
 
     memcpy(&id, (char *)data + 1, INT_SIZE);
-    return id;
+    free(value);
+    return id + 1;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
