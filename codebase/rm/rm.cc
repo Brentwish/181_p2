@@ -254,21 +254,16 @@ int RelationManager::getTableId(const string &tableName) {
     memcpy((char *)value + INT_SIZE, tableName.c_str(), tableNameLength);
 
     attrNames.push_back("table-id");
-    attrNames.push_back("table-name");
-    attrNames.push_back("file-name");
 
     rbfm->scan(fileHandle, tableRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
 
     data = malloc(1 + INT_SIZE);
 
-    cout << "Before\n";
     iterator.getNextRecord(rid, data);
     //data contains a null byte for the attr plus the attr itself
     //we know this attr can't be null so we can ignore the byte
     iterator.close();
     free(value);
-    cout << "After\n";
-    cout << "Print Record\n";
     // rbfm->printRecord(tableRecDesc, data);
     //close the fileHandle
     if (rbfm->closeFile(fileHandle)) {
@@ -278,47 +273,82 @@ int RelationManager::getTableId(const string &tableName) {
 
     memcpy(&id, (char *)data + 1, INT_SIZE);
     free(data);
-    return id + 1;
+    return id;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-    // RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-    // RBFM_ScanIterator iterator;
-    // FileHandle fileHandle;
-    // RID rid;
-    // vector<Attribute> columnRecDesc;
-    // string condAttr;
-    // void *value, *data;
-    // vector<string> attrNames;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    RBFM_ScanIterator iterator;
+    Attribute attr;
+    FileHandle fileHandle;
+    RID rid;
+    vector<Attribute> columnRecDesc;
+    string condAttr;
+    void *value, *data;
+    vector<string> attrNames;
     int id;
     //Get the id of tableName from Tables
     //use it to key into columns
     id = getTableId(tableName);
     cout << "Found id: " << id << endl;
-    
-    //if (rbfm->openFile(toFilename(COLUMNS_NAME), fileHandle) != SUCCESS) {
-    //    perror("RelationManager: getAttributes() failed to open Columns.tbl");
-    //    return -1;
-    //}
 
-    //columnRecDesc = getColumnsRecordDescriptor();
-    //condAttr = "table-id";
-    //value = malloc(INT_SIZE);
-    //memcpy(value, &id, INT_SIZE);
-    //attrNames.push_back("column-name");
-    //attrNames.push_back("column-type");
-    //attrNames.push_back("column-length");
-    //attrNames.push_back("column-position");
+    if (rbfm->openFile(toFilename(COLUMNS_NAME), fileHandle) != SUCCESS) {
+        perror("RelationManager: getAttributes() failed to open Columns.tbl");
+        return -1;
+    }
 
-    ////search for the entry's with that id and append them to attrs
-    //rbfm->scan(fileHandle, columnRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
+    columnRecDesc = getColumnsRecordDescriptor();
+    condAttr = "table-id";
+    value = malloc(INT_SIZE);
+    memcpy(value, &id, INT_SIZE);
+    attrNames.push_back("column-name");
+    attrNames.push_back("column-type");
+    attrNames.push_back("column-length");
 
-    //if (rbfm->closeFile(fileHandle)) {
-    //    perror("RelationManager: getAttributes() failed to close Columns.tbl");
-    //    return -1;
-    //}
-    //return -1;
+    //search for the entry's with that id and append them to attrs
+    rbfm->scan(fileHandle, columnRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
+
+    data = malloc(1+50+4+4);
+    while (iterator.getNextRecord(rid, data) != RBFM_EOF) {
+        //Need to fill attr with data
+        //skip the null byte
+        int offset = 1;
+
+        //column-name length
+        int columnNameLength = 0;
+        memcpy(&columnNameLength, (char*) data + offset, INT_SIZE);
+        offset += INT_SIZE;
+
+        //column-name
+        char *columnName = (char *) malloc(columnNameLength + 1);
+        memset(columnName, '\0', columnNameLength + 1);
+        memcpy(columnName, (char*) data + offset, columnNameLength);
+        offset += columnNameLength;
+        attr.name = columnName;
+        free(columnName);
+
+        //column-type
+        int columnType = 0;
+        memcpy(&columnType, (char*) data + offset, INT_SIZE);
+        offset += INT_SIZE;
+        attr.type = (AttrType)columnType;
+
+        //column-length
+        int columnLength = 0;
+        memcpy(&columnLength, (char*) data + offset, INT_SIZE);
+        offset += INT_SIZE;
+        attr.length = (AttrLength)columnLength;
+
+        attrs.push_back(attr);
+    }
+
+
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: getAttributes() failed to close Columns.tbl");
+        return -1;
+    }
+    return 0;
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
