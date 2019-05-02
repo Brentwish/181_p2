@@ -404,7 +404,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<At
     }
 
     // find the index of the attribute we are looking for 
-    int i;
+    int i=0;
     while(recordDescriptor[i].name != attributeName){
         i++;
     }
