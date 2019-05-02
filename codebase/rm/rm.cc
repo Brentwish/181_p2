@@ -348,7 +348,10 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         perror("RelationManager: getAttributes() failed to close Columns.tbl");
         return -1;
     }
+    free(data);
+    free(value);
     return 0;
+
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
