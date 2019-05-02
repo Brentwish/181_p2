@@ -254,35 +254,29 @@ int RelationManager::getTableId(const string &tableName) {
     memcpy((char *)value + INT_SIZE, tableName.c_str(), tableNameLength);
 
     attrNames.push_back("table-id");
+    attrNames.push_back("table-name");
+    attrNames.push_back("file-name");
 
     rbfm->scan(fileHandle, tableRecDesc, condAttr, EQ_OP, value, attrNames, iterator);
-    
 
     data = malloc(1 + INT_SIZE);
 
     cout << "Before\n";
     iterator.getNextRecord(rid, data);
-        //data contains a null byte for the attr plus the attr itself
-        //we know this attr can't be null so we can ignore the byte
+    //data contains a null byte for the attr plus the attr itself
+    //we know this attr can't be null so we can ignore the byte
+    iterator.close();
+    free(value);
     cout << "After\n";
-
+    cout << "Print Record\n";
+    // rbfm->printRecord(tableRecDesc, data);
     //close the fileHandle
     if (rbfm->closeFile(fileHandle)) {
         perror("RelationManager: getTableId() failed to close Tables.tbl");
         return -1;
     }
 
-    //vector<Attribute> temp;
-    //Attribute t;
-    //t.name = "table-id";
-    //t.type = TypeInt;
-    //t.length = INT_SIZE;
-    //temp.push_back(t);
-    //cout << "Print Record\n";
-    //rbfm->printRecord(temp, data);
-
     memcpy(&id, (char *)data + 1, INT_SIZE);
-    free(value);
     return id + 1;
 }
 
