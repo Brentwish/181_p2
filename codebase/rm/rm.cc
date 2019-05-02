@@ -359,6 +359,7 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
     FileHandle fileHandle;
     vector<Attribute> attrs;
 
+    //Check if Tables.tbl or Columns.tbl
     if (isAdmin(tableName)) {
         perror("RelationManager: insertTuple() invalid table");
         return -1;
@@ -381,12 +382,56 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
-    return -1;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    FileHandle fileHandle;
+    vector<Attribute> attrs;
+
+    //Check if Tables.tbl or Columns.tbl
+    if (isAdmin(tableName)) {
+        perror("RelationManager: deleteTuple() invalid table");
+        return -1;
+    }
+
+    if (rbfm->openFile(toFilename(tableName), fileHandle) != SUCCESS) {
+        perror("RelationManager: deleteTuple() failed to open table");
+        return -1;
+    }
+
+    getAttributes(tableName, attrs);
+    rbfm->deleteRecord(fileHandle, attrs, rid);
+
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: deleteTuple() failed to close table");
+        return -1;
+    }
+    return 0;
 }
 
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
-    return -1;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    FileHandle fileHandle;
+    vector<Attribute> attrs;
+
+    //Check if Tables.tbl or Columns.tbl
+    if (isAdmin(tableName)) {
+        perror("RelationManager: updateTuple() invalid table");
+        return -1;
+    }
+
+    if (rbfm->openFile(toFilename(tableName), fileHandle) != SUCCESS) {
+        perror("RelationManager: updateTuple() failed to open table");
+        return -1;
+    }
+
+    getAttributes(tableName, attrs);
+    rbfm->updateRecord(fileHandle, attrs, data, rid);
+
+    if (rbfm->closeFile(fileHandle)) {
+        perror("RelationManager: updateTuple() failed to close table");
+        return -1;
+    }
+    return 0;
 }
 
 // have method for this in RBFM
