@@ -168,11 +168,13 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
     //Check file doesn't exist
     if (rbfm->checkFile(filename)) {
+        free(record);
         perror("RelationManager: createTable() file already exists");
         return -1;
     }
     //Create the file
     if (rbfm->createFile(filename) != SUCCESS) {
+        free(record);
         perror("RelationManager: createTable() failed to create file");
         return -1;
     }
@@ -180,6 +182,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     //Open the Tables table to insert the new table entry
     // (new_id, tableName, filename)
     if (rbfm->openFile(toFilename(TABLES_NAME), fileHandle) != SUCCESS) {
+        free(record);
         perror("RelationManager: createTable() failed to open Tables.tbl");
         return -1;
     }
@@ -219,7 +222,56 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
 RC RelationManager::deleteTable(const string &tableName)
 {
-    return -1;
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    RC rc;
+    FileHandle fh;
+    RID rid;
+
+    if (isAdmin(tableName)){
+        perror("RelationManager: deleteTable() invalid table");
+        return -1;
+    }
+
+    // remove the whole db for the file
+    rc = rbfm->destroyFile(toFilename(tableName));
+    int id;
+    id = getTableId(tableName);
+
+    // get the tables file
+    rbfm->openFile(toFilename(TABLES_NAME), fh);
+
+    RBFM_ScanIterator scanIter;
+
+    // create things for the scanner
+    vector<string> attrNames; // don't need anything back just delete
+    void *value = malloc(INT_SIZE);
+    memcpy(value, &id, INT_SIZE);
+    vector<Attribute> tablesRD = getTablesRecordDescriptor();
+
+    // find the tables with the same id 
+    rbfm->scan(fh, tablesRD, "table-id", EQ_OP, value, attrNames, scanIter);
+
+    scanIter.getNextRecord(rid, NULL);
+    cout << rid.slotNum << "- Slot\n" << rid.pageNum << "- Page\n";
+    // remove the rid returned from the tables table
+    rbfm->deleteRecord(fh, tablesRD, rid);
+    rbfm->closeFile(fh);
+    scanIter.close();
+
+    // now remove from the columns table 
+    rbfm->openFile(toFilename(COLUMNS_NAME), fh);
+    // use same params as the scan earlier
+    vector<Attribute> columnsRD = getColumnsRecordDescriptor(); // rd for columns
+    rbfm->scan(fh, columnsRD, "table-id", EQ_OP, value, attrNames, scanIter);
+
+    while(scanIter.getNextRecord(rid, NULL) != RBFM_EOF) {
+        rbfm->deleteRecord(fh, columnsRD, rid);
+    }
+    rbfm->closeFile(fh);
+    scanIter.close();
+    free(value);
+
+    return SUCCESS;
 }
 
 int RelationManager::getTableId(const string &tableName) {
@@ -320,12 +372,14 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         offset += INT_SIZE;
 
         //column-name
-        char *columnName = (char *) malloc(columnNameLength + 1);
+        // char *columnName = (char *) malloc(columnNameLength + 1);
+        char columnName[columnNameLength + 1];
         memset(columnName, '\0', columnNameLength + 1);
         memcpy(columnName, (char*) data + offset, columnNameLength);
+        
         offset += columnNameLength;
         attr.name = columnName;
-        free(columnName);
+        // free(columnName);
 
         //column-type
         int columnType = 0;
@@ -347,6 +401,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
         perror("RelationManager: getAttributes() failed to close Columns.tbl");
         return -1;
     }
+    iterator.close();
     free(data);
     free(value);
     return 0;
@@ -481,7 +536,18 @@ RC RelationManager::scan(const string &tableName,
       const vector<string> &attributeNames,
       RM_ScanIterator &rm_ScanIterator)
 {
-    return -1;
+    // need to create RD
+    RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+
+    rbfm->openFile(toFilename(tableName), rm_ScanIterator.fh);
+
+    vector<Attribute> rd;
+
+    getAttributes(tableName, rd);
+
+    RC rc = rbfm->scan(rm_ScanIterator.fh, rd, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfm_scan);
+    if (rc) return rc;
+    return SUCCESS;
 }
 
 string RelationManager::toFilename(const string &tableName) {
