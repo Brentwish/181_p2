@@ -26,6 +26,9 @@ public:
   // "data" follows the same format as RelationManager::insertTuple()
   RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
   RC close() { return -1; };
+
+  FileHandle fh;
+  RBFM_ScanIterator rbfm_scan;
 };
 
 

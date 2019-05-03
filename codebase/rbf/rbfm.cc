@@ -506,17 +506,18 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     	return getNextRecord(rid, data);
     }
     // check if record satisfies compOp
-    bool valid;
+    bool valid = false;
     // Figure which attribute to get from the record to compare
     int idx = 0;
     while(rd[idx].name != condAttr) {
     	idx++;
     }
     // get the exact attribute
-    rbfm->insertAttrIntoData(page, sEntry, idx, data); // has null indicator as 1st byte
+    void* tempPage = malloc(200);
+    rbfm->insertAttrIntoData(page, sEntry, idx, tempPage); // has null indicator as 1st byte
     //check if field is null
     char nullBytes;
-    memcpy(&nullBytes, data, 1);
+    memcpy(&nullBytes, tempPage, 1);
     if (nullBytes) { // is null 
     	valid = false;
     }
@@ -524,7 +525,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     else if (rd[idx].type == TypeInt) {
     	// current slot's value 
     	int val1;
-    	memcpy(&val1,(char*) data + 1,INT_SIZE);
+    	memcpy(&val1,(char*) tempPage + 1,INT_SIZE);
     	// get the value that we are comparing to
     	int val2;
     	memcpy(&val2, val, INT_SIZE);
@@ -535,7 +536,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     else if (rd[idx].type == TypeReal) {
     	// current slot's value 
     	float val1;
-    	memcpy(&val1, (char*) data + 1, REAL_SIZE);
+    	memcpy(&val1, (char*) tempPage + 1, REAL_SIZE);
     	// get the value that we are comparing to
     	float val2;
     	memcpy(&val2, val, REAL_SIZE);
@@ -545,9 +546,9 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     }
     else if (rd[idx].type == TypeVarChar) {
     	int varLen; 
-    	memcpy(&varLen, (char*) data + 1, VARCHAR_LENGTH_SIZE);
+    	memcpy(&varLen, (char*) tempPage + 1, VARCHAR_LENGTH_SIZE);
     	char varString[varLen + 1]; // for null terminate
-    	memcpy(&varString, (char*) data + 1 + VARCHAR_LENGTH_SIZE, varLen);
+    	memcpy(&varString, (char*) tempPage + 1 + VARCHAR_LENGTH_SIZE, varLen);
     	varString[varLen] = '\0';
 
     	int varLen2;
@@ -559,6 +560,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
 
     	valid = compareVarChars(varString, varString2);
     }
+    free(tempPage);
     // the current record didn't satisfy the condition
     // do the same earlier
     if (!valid) {
@@ -592,6 +594,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     }
 
     void *attrPage = malloc(4096);
+    if (attrPage == NULL) 
+        return 2;
     // to set the null indicator before the attributes
     // for (int i=0; i < indexList.size(); i++) {
     // 	if (fieldIsNull())
@@ -743,10 +747,14 @@ void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordE
     memcpy (recordNullIndicator, (char*) recOffset + sizeof(RecordLength), recordNullIndicatorSize);
 
     // check if the field is null
-    if (fieldIsNull(recordNullIndicator, attrIdx))
+    bool null = false;
+    if (fieldIsNull(recordNullIndicator, attrIdx)){
         recordNullIndicator[0] |= (1 << 7); // make the first bit in the null indicator null 
+        null = true;
+    }
     memcpy(data, &recordNullIndicator, 1); // place in the data
     dataOffset += 1;
+    if (null) return;
 
     // move to the correct column for the offset
     // |Record Length | Null Bytes | Col 1 | Col 2| ... | Data1 | Data2 | 
@@ -766,7 +774,7 @@ void RecordBasedFileManager::insertAttrIntoData(void* page, SlotDirectoryRecordE
     }
     
     // use length to check type 
-    int attrSize = recDataOffset - prevRecDataOffset;
+    uint32_t attrSize = recDataOffset - prevRecDataOffset;
 
     if (attrSize == INT_SIZE) { // is the size of an int or real 
         memcpy((char*) data + dataOffset, (char*) recOffset + prevRecDataOffset, attrSize);
