@@ -1,8 +1,8 @@
 1. Basic information
-Team Number : 
+Team Number : 7
 Student ID# of Submitter:
 Name of Submitter: 
-ID#s and Names for others on the Team
+ID#s and Names for others on the Team: Mayowa Borisade(1537578), Brent Wishart, Ray Zhao 
 
 
 2. Metadata
